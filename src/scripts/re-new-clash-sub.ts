@@ -3,17 +3,18 @@ import { cloneDeep } from "lodash";
 import yaml from "js-yaml";
 import OSS from "ali-oss";
 
+interface Proxy {
+  name: string;
+  server: string;
+  port: number;
+  type: string;
+  password: string;
+  sni: string;
+  "skip-cert-verify": boolean;
+}
+
 interface ClashConfig {
-  proxies: {
-    name: string;
-    server: string;
-    port: number;
-    type: string;
-    password: string;
-    sni: string;
-    "skip-cert-verify": boolean;
-    [key: string]: any;
-  }[];
+  proxies: Proxy[];
   "proxy-groups": {
     name: string;
     type: string;
@@ -23,7 +24,8 @@ interface ClashConfig {
 }
 
 export async function reNewClashSub(ossClient: OSS | null) {
-  const { SUB_URL, HY2_CONFIG, NEED_OUTPUT_FILE, NEED_ONLY_HY2 } = process.env;
+  const { SUB_URL, HY2_CONFIG, NEED_OUTPUT_FILE, NEED_ONLY_HY2, HY2_SUB_URL } =
+    process.env;
 
   if (SUB_URL) {
     console.log("获取 clash 订阅中...");
@@ -35,22 +37,35 @@ export async function reNewClashSub(ossClient: OSS | null) {
     const onlyHy2Content = NEED_ONLY_HY2 ? cloneDeep(content) : null;
 
     // 如果有 hy2 配置 添加到 proxies 中
-    if (HY2_CONFIG) {
-      // 使用正则表达式匹配字符串中的信息
-      const regex =
-        /hy2:\/\/([^@]+)@([^:]+):(\d+)\?insecure=(\d)&sni=([^#\n]+)#([^#\n]+)/g;
-      const matches = [...HY2_CONFIG.matchAll(regex)];
+    if (HY2_CONFIG || HY2_SUB_URL) {
+      let hy2ConfigList: Proxy[] = [];
 
-      // 将匹配的信息转换为对象数组
-      const hy2ConfigList = matches.map((match) => ({
-        name: match[6],
-        server: match[2],
-        port: parseInt(match[3]),
-        type: "hysteria2",
-        password: match[1],
-        sni: match[5],
-        "skip-cert-verify": match[4] === "0",
-      }));
+      if (HY2_CONFIG) {
+        // 使用正则表达式匹配字符串中的信息
+        const regex =
+          /hy2:\/\/([^@]+)@([^:]+):(\d+)\?insecure=(\d)&sni=([^#\n]+)#([^#\n]+)/g;
+        const matches = [...HY2_CONFIG.matchAll(regex)];
+
+        // 将匹配的信息转换为对象数组
+        hy2ConfigList = matches.map((match) => ({
+          name: match[6],
+          server: match[2],
+          port: parseInt(match[3]),
+          type: "hysteria2",
+          password: match[1],
+          sni: match[5],
+          "skip-cert-verify": match[4] === "0",
+        }));
+      }
+      
+      if (HY2_SUB_URL) {
+        console.log("获取 hy2 订阅中...");
+        const hy2SubFile = await fetch(HY2_SUB_URL);
+        const hy2SubYamlContent = await hy2SubFile.text();
+        console.log("获取 hy2 订阅成功, 开始处理...");
+        const hy2SubContent = yaml.load(hy2SubYamlContent) as ClashConfig;
+        hy2ConfigList = hy2ConfigList.concat(hy2SubContent.proxies);
+      }
 
       // 加入代理配置
       content.proxies = hy2ConfigList.concat(content.proxies);
@@ -124,7 +139,7 @@ export async function reNewClashSub(ossClient: OSS | null) {
         console.error("上传到 OSS 失败:", error);
       }
     } else {
-      console.log('ossClient is not defined, skipping upload to OSS');
+      console.log("ossClient is not defined, skipping upload to OSS");
     }
 
     // 删除 temp 文件
