@@ -2,22 +2,33 @@ name: cron script
 
 on:
   schedule:
-    - cron:  '0 9 * * *'
+    - cron: "0 1 * * *"
+  push:
+    branches:
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Use Node.js
-      uses: actions/setup-node@v2
-      with:
-        node-version: '18'
+      - name: Use Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: "18"
 
-    - run: npm install pnpm -g
-    - run: pnpm install tsx -g
-    - run: pnpm install
-    - run: src/index.ts
+      - run: npm install pnpm -g
+      - run: pnpm install tsx -g
+      - run: pnpm install
+
+      - name: Run script
+        run: tsx src/index.ts
+        env:
+          SUB_URL: ${{ secrets.SUB_URL }}
+          HY2_SUB_URL: ${{ secrets.HY2_SUB_URL }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          NEED_ONLY_HY2: true
