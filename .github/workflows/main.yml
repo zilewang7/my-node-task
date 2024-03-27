@@ -1,0 +1,23 @@
+name: cron script
+
+on:
+  schedule:
+    - cron:  '0 9 * * *'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Use Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '18'
+
+    - run: npm install pnpm -g
+    - run: pnpm install tsx -g
+    - run: pnpm install
+    - run: src/index.ts
