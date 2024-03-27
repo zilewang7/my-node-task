@@ -21,7 +21,7 @@ jobs:
           node-version: "18"
 
       - run: npm install tsx -g
-      - run: npm install pnpm -g
+      - run: npm install pnpm@7 -g
       - run: pnpm install
 
       - name: Run script
