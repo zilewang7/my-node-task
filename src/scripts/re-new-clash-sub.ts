@@ -40,6 +40,7 @@ export async function reNewClashSub(ossClient: OSS | null) {
     if (CLASH_ADDITIONAL_RULES) {
       try {
         content.rules.unshift(...JSON.parse(CLASH_ADDITIONAL_RULES));
+        console.log("CLASH_ADDITIONAL_RULES 添加成功:", CLASH_ADDITIONAL_RULES);
       } catch (error) {
         console.error("CLASH_ADDITIONAL_RULES 格式错误", error);
       }
