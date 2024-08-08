@@ -32,3 +32,4 @@ jobs:
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
           NEED_ONLY_HY2: ${{ secrets.NEED_ONLY_HY2 }}
+          CLASH_ADDITIONAL_RULES: ${{ secrets.CLASH_ADDITIONAL_RULES }}
