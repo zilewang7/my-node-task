@@ -21,10 +21,11 @@ interface ClashConfig {
     proxies: string[];
     [key: string]: any;
   }[];
+  rules: string[];
 }
 
 export async function reNewClashSub(ossClient: OSS | null) {
-  const { SUB_URL, HY2_CONFIG, NEED_OUTPUT_FILE, NEED_ONLY_HY2, HY2_SUB_URL } =
+  const { SUB_URL, HY2_CONFIG, NEED_OUTPUT_FILE, NEED_ONLY_HY2, HY2_SUB_URL, CLASH_ADDITIONAL_RULES } =
     process.env;
 
   if (SUB_URL) {
@@ -35,6 +36,14 @@ export async function reNewClashSub(ossClient: OSS | null) {
 
     const content = yaml.load(yamlContent) as ClashConfig;
     const onlyHy2Content = NEED_ONLY_HY2 ? cloneDeep(content) : null;
+
+    if (CLASH_ADDITIONAL_RULES) {
+      try {
+        content.rules.unshift(...JSON.parse(CLASH_ADDITIONAL_RULES));
+      } catch (error) {
+        console.error("CLASH_ADDITIONAL_RULES 格式错误", error);
+      }
+    }
 
     // 如果有 hy2 配置 添加到 proxies 中
     if (HY2_CONFIG || HY2_SUB_URL) {
@@ -57,7 +66,7 @@ export async function reNewClashSub(ossClient: OSS | null) {
           "skip-cert-verify": match[4] === "0",
         }));
       }
-      
+
       if (HY2_SUB_URL) {
         console.log("获取 hy2 订阅中...");
         const hy2SubFile = await fetch(HY2_SUB_URL);
