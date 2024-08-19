@@ -28,6 +28,7 @@ jobs:
         run: tsx src/index.ts
         env:
           SUB_URL: ${{ secrets.SUB_URL }}
+          HY2_CONFIG: ${{ secrets.HY2_CONFIG }}
           HY2_SUB_URL: ${{ secrets.HY2_SUB_URL }}
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
