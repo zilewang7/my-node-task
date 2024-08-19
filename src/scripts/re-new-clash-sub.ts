@@ -53,7 +53,7 @@ export async function reNewClashSub(ossClient: OSS | null) {
       if (HY2_CONFIG) {
         // 使用正则表达式匹配字符串中的信息
         const regex =
-          /hy2:\/\/([^@]+)@([^:]+):(\d+)\?insecure=(\d)&sni=([^#\n]+)#([^#\n]+)/g;
+          /hy2:\/\/([^@]+)@([^:]+):(\d+)\?(?:insecure=(\d))?(?:&sni=([^#\n]+))?#([^#\n]+)/g;
         const matches = [...HY2_CONFIG.matchAll(regex)];
 
         // 将匹配的信息转换为对象数组
