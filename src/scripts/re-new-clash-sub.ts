@@ -81,6 +81,11 @@ export async function reNewClashSub(ossClient: OSS | null) {
       content.proxies = hy2ConfigList.concat(content.proxies);
       onlyHy2Content && (onlyHy2Content.proxies = hy2ConfigList);
 
+      // 去重
+      content.proxies = content.proxies.filter(
+        (proxy) => !hy2ConfigList.some((hy2Proxy) => hy2Proxy.name === proxy.name)
+      )
+
       // 加入规则分组
       const groupsName = content["proxy-groups"].map(({ name }) => name);
       content["proxy-groups"].forEach(({ proxies }) => {
