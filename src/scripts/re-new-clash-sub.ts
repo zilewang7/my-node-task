@@ -77,21 +77,28 @@ export async function reNewClashSub(ossClient: OSS | null) {
         hy2ConfigList = hy2ConfigList.concat(hy2SubContent.proxies);
       }
 
-      // 加入代理配置
-      content.proxies = hy2ConfigList.concat(content.proxies);
-      onlyHy2Content && (onlyHy2Content.proxies = hy2ConfigList);
-
       // 去重
       content.proxies = content.proxies.filter(
         (proxy) => !hy2ConfigList.some((hy2Proxy) => hy2Proxy.name === proxy.name)
       )
 
+      // 加入代理配置
+      content.proxies = hy2ConfigList.concat(content.proxies);
+      onlyHy2Content && (onlyHy2Content.proxies = hy2ConfigList);
+
+
       // 加入规则分组
       const groupsName = content["proxy-groups"].map(({ name }) => name);
-      content["proxy-groups"].forEach(({ proxies }) => {
+      content["proxy-groups"].forEach(({ proxies }, index) => {
         if (proxies.length <= 3) {
           return;
         }
+
+        // 将包含 GAME 的节点移动到靠前
+        const gameGroup = proxies.filter((name) => name.includes("GAME"));
+        const otherGroup = proxies.filter((name) => !name.includes("GAME"));
+        proxies = otherGroup;
+
         let insertPlace = 0;
         let checkNameTemp = proxies[insertPlace];
         while (groupsName.includes(checkNameTemp)) {
@@ -101,8 +108,14 @@ export async function reNewClashSub(ossClient: OSS | null) {
         proxies.splice(
           insertPlace,
           insertPlace,
-          ...hy2ConfigList.map(({ name }) => name)
+          ...hy2ConfigList.map(({ name }) => name),
+          ...gameGroup
         );
+
+        // 去重
+        proxies = [...new Set(proxies)];
+
+        content["proxy-groups"][index].proxies = proxies;
       });
       // 处理仅 hy2 的规则组
       onlyHy2Content &&
