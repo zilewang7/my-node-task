@@ -94,9 +94,9 @@ export async function reNewClashSub(ossClient: OSS | null) {
           return;
         }
 
-        // 将包含 GAME 的节点移动到靠前
-        const gameGroup = proxies.filter((name) => name.includes("G"));
-        const otherGroup = proxies.filter((name) => !name.includes("G"));
+        // 将游戏节点和实验移动到靠前
+        const gameGroup = proxies.filter((name) => ["G", "E"].includes(name));
+        const otherGroup = proxies.filter((name) => !["G", "E"].includes(name));
         proxies = otherGroup;
 
         let insertPlace = 0;
