@@ -95,8 +95,8 @@ export async function reNewClashSub(ossClient: OSS | null) {
         }
 
         // 将游戏节点和实验移动到靠前
-        const gameGroup = proxies.filter((name) => ["G", "E"].includes(name));
-        const otherGroup = proxies.filter((name) => !["G", "E"].includes(name));
+        const gameGroup = proxies.filter((name) => name.includes("G") || name.includes("E"));
+        const otherGroup = proxies.filter((name) => !(name.includes("G") || name.includes("E")));
         proxies = otherGroup;
 
         let insertPlace = 0;
