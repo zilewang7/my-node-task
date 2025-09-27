@@ -24,14 +24,44 @@ interface ClashConfig {
   rules: string[];
 }
 
+async function fetchSubData(url: string) {
+  const headers = {
+    'User-Agent': 'clash-verge/v2.4.2',
+    'Accept-Encoding': 'deflate, gzip'
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const text = await response.text();
+
+    return text;
+  } catch (error) {
+    console.error('Fetch error:', error);
+  }
+}
+
+
 export async function reNewClashSub(ossClient: OSS | null) {
   const { SUB_URL, HY2_CONFIG, NEED_OUTPUT_FILE, NEED_ONLY_HY2, HY2_SUB_URL, CLASH_ADDITIONAL_RULES } =
     process.env;
 
   if (SUB_URL) {
     console.log("获取 clash 订阅中...");
-    const filed = await fetch(SUB_URL);
-    const yamlContent = await filed.text();
+    const yamlContent = await fetchSubData(SUB_URL);
+
+    if (!yamlContent) {
+      console.log("未获取到订阅")
+      return;
+    }
+
     console.log("获取 clash 订阅成功, 开始处理...");
 
     const content = yaml.load(yamlContent) as ClashConfig;
@@ -70,8 +100,14 @@ export async function reNewClashSub(ossClient: OSS | null) {
 
       if (HY2_SUB_URL) {
         console.log("获取 hy2 订阅中...");
-        const hy2SubFile = await fetch(HY2_SUB_URL);
-        const hy2SubYamlContent = await hy2SubFile.text();
+        const hy2SubYamlContent = await fetchSubData(HY2_SUB_URL);
+
+
+        if (!hy2SubYamlContent) {
+          console.log("未获取到订阅")
+          return;
+        }
+
         console.log("获取 hy2 订阅成功, 开始处理...");
         const hy2SubContent = yaml.load(hy2SubYamlContent) as ClashConfig;
         hy2ConfigList = hy2ConfigList.concat(hy2SubContent.proxies);
