@@ -20,6 +20,10 @@ jobs:
         with:
           node-version: "18"
 
+      - name: Install hysteria2 client
+        run: |
+          curl -fsSL https://get.hy2.sh/ | bash
+
       - run: npm install tsx -g
       - run: npm install pnpm@7 -g
       - run: pnpm install

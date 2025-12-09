@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "fs";
-import { execSync } from "child_process";
+import { execSync, spawn, ChildProcess } from "child_process";
 import { cloneDeep } from "lodash";
 import yaml from "js-yaml";
 import OSS from "ali-oss";
@@ -25,17 +25,177 @@ interface ClashConfig {
   rules: string[];
 }
 
-async function fetchSubData(url: string) {
-  // 优先使用 curl，因为 GitHub Actions 中 fetch 可能被目标服务器 403
+interface Hy2ProxyConfig {
+  server: string;
+  port: number;
+  password: string;
+  sni?: string;
+  insecure: boolean;
+  name: string;
+}
+
+// 解析 HY2_CONFIG 获取代理配置列表
+function parseHy2Config(hy2Config: string): Hy2ProxyConfig[] {
+  const regex = /hy2:\/\/([^@]+)@([^:]+):(\d+)\?(?:insecure=(\d))?(?:&sni=([^#\n]+))?#([^#\n]+)/g;
+  const matches = [...hy2Config.matchAll(regex)];
+  return matches.map((match) => ({
+    password: match[1],
+    server: match[2],
+    port: parseInt(match[3]),
+    insecure: match[4] === "1",
+    sni: match[5],
+    name: match[6],
+  }));
+}
+
+// 全局变量：当前运行的 hy2 进程和代理端口
+let currentHy2Process: ChildProcess | null = null;
+const HY2_SOCKS_PORT = 11080;
+
+// 启动 hysteria2 客户端作为 SOCKS5 代理
+async function startHy2Proxy(proxy: Hy2ProxyConfig): Promise<boolean> {
+  // 先停止之前的进程
+  stopHy2Proxy();
+
+  const hy2ConfigContent = {
+    server: `${proxy.server}:${proxy.port}`,
+    auth: proxy.password,
+    tls: {
+      sni: proxy.sni || proxy.server,
+      insecure: proxy.insecure,
+    },
+    socks5: {
+      listen: `127.0.0.1:${HY2_SOCKS_PORT}`,
+    },
+  };
+
+  // 写入临时配置文件
+  const configPath = "/tmp/hy2-client.yaml";
+  writeFileSync(configPath, yaml.dump(hy2ConfigContent));
+
+  return new Promise((resolve) => {
+    try {
+      // 启动 hysteria2 客户端
+      currentHy2Process = spawn("hysteria", ["client", "-c", configPath], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+
+      let started = false;
+
+      currentHy2Process.stdout?.on("data", (data) => {
+        const output = data.toString();
+        if (output.includes("server address") || output.includes("SOCKS5")) {
+          started = true;
+        }
+      });
+
+      currentHy2Process.stderr?.on("data", (data) => {
+        console.log(`[hy2 stderr] ${data.toString().trim()}`);
+      });
+
+      currentHy2Process.on("error", (err) => {
+        console.error(`启动 hysteria2 失败: ${err.message}`);
+        resolve(false);
+      });
+
+      // 等待一段时间让代理启动
+      setTimeout(() => {
+        if (currentHy2Process && !currentHy2Process.killed) {
+          // 测试代理是否可用
+          try {
+            execSync(`curl -s --socks5 127.0.0.1:${HY2_SOCKS_PORT} --connect-timeout 5 https://www.google.com -o /dev/null`, {
+              timeout: 10000,
+            });
+            console.log(`代理 ${proxy.name} 启动成功`);
+            resolve(true);
+          } catch {
+            console.log(`代理 ${proxy.name} 连接测试失败`);
+            resolve(false);
+          }
+        } else {
+          resolve(false);
+        }
+      }, 3000);
+    } catch (err) {
+      console.error(`启动 hysteria2 异常: ${err}`);
+      resolve(false);
+    }
+  });
+}
+
+// 停止 hysteria2 客户端
+function stopHy2Proxy() {
+  if (currentHy2Process && !currentHy2Process.killed) {
+    currentHy2Process.kill();
+    currentHy2Process = null;
+  }
+}
+
+// 使用代理请求数据
+function fetchWithSocks5Proxy(url: string): string | null {
+  try {
+    const result = execSync(
+      `curl -s --socks5 127.0.0.1:${HY2_SOCKS_PORT} -X GET "${url}" -H "User-Agent: clash-verge/v2.4.2" -H "Accept-Encoding: deflate, gzip" --compressed --connect-timeout 15 --max-time 30`,
+      { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }
+    );
+    // 检查是否返回了 HTML（Cloudflare 拦截页面）
+    if (result.includes("<!DOCTYPE html>") || result.includes("<html")) {
+      console.log("返回了 HTML 页面，可能被拦截");
+      return null;
+    }
+    return result;
+  } catch (err) {
+    console.error("通过代理请求失败:", err);
+    return null;
+  }
+}
+
+// 带代理重试的请求函数
+async function fetchSubDataWithHy2Proxy(url: string, hy2Proxies: Hy2ProxyConfig[]): Promise<string | null> {
+  for (const proxy of hy2Proxies) {
+    console.log(`尝试使用代理: ${proxy.name} (${proxy.server}:${proxy.port})`);
+    const started = await startHy2Proxy(proxy);
+    if (!started) {
+      console.log(`代理 ${proxy.name} 启动失败，尝试下一个`);
+      continue;
+    }
+
+    const result = fetchWithSocks5Proxy(url);
+    if (result) {
+      console.log(`通过代理 ${proxy.name} 请求成功`);
+      return result;
+    }
+    console.log(`通过代理 ${proxy.name} 请求失败，尝试下一个`);
+  }
+
+  stopHy2Proxy();
+  return null;
+}
+
+async function fetchSubData(url: string, hy2Proxies?: Hy2ProxyConfig[]) {
+  // 首先尝试直接请求
   try {
     // Windows CMD 中 & 是命令分隔符，需要用双引号包裹 URL
     const result = execSync(
-      `curl -s -X GET "${url}" -H "User-Agent: clash-verge/v2.4.2" -H "Accept-Encoding: deflate, gzip" --compressed`,
+      `curl -s -X GET "${url}" -H "User-Agent: clash-verge/v2.4.2" -H "Accept-Encoding: deflate, gzip" --compressed --connect-timeout 10 --max-time 20`,
       { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
     );
+    // 检查是否返回了 HTML（Cloudflare 拦截页面）
+    if (result.includes("<!DOCTYPE html>") || result.includes("<html")) {
+      console.log("直接请求返回了 HTML 页面，可能被 Cloudflare 拦截");
+      throw new Error("Cloudflare blocked");
+    }
     return result;
   } catch (curlError) {
-    console.warn('curl failed, falling back to fetch:', curlError);
+    console.warn('直接 curl 请求失败，尝试使用 hy2 代理...');
+  }
+
+  // 如果直接请求失败，尝试使用 hy2 代理
+  if (hy2Proxies && hy2Proxies.length > 0) {
+    const result = await fetchSubDataWithHy2Proxy(url, hy2Proxies);
+    if (result) {
+      return result;
+    }
   }
 
   // fallback 到 fetch
@@ -55,6 +215,11 @@ async function fetchSubData(url: string) {
     }
 
     const text = await response.text();
+    // 检查是否返回了 HTML
+    if (text.includes("<!DOCTYPE html>") || text.includes("<html")) {
+      console.log("fetch 返回了 HTML 页面，可能被拦截");
+      return undefined;
+    }
 
     return text;
   } catch (error) {
@@ -67,9 +232,15 @@ export async function reNewClashSub(ossClient: OSS | null) {
   const { SUB_URL, HY2_CONFIG, NEED_OUTPUT_FILE, NEED_ONLY_HY2, HY2_SUB_URL, CLASH_ADDITIONAL_RULES } =
     process.env;
 
+  // 预先解析 hy2 代理配置，用于后续请求时作为备用代理
+  const hy2Proxies = HY2_CONFIG ? parseHy2Config(HY2_CONFIG) : [];
+  if (hy2Proxies.length > 0) {
+    console.log(`已解析 ${hy2Proxies.length} 个 hy2 代理配置，将在需要时使用`);
+  }
+
   if (SUB_URL) {
     console.log("获取 clash 订阅中...");
-    const yamlContent = await fetchSubData(SUB_URL);
+    const yamlContent = await fetchSubData(SUB_URL, hy2Proxies);
 
     if (!yamlContent) {
       console.log("未获取到订阅")
@@ -114,11 +285,12 @@ export async function reNewClashSub(ossClient: OSS | null) {
 
       if (HY2_SUB_URL) {
         console.log("获取 hy2 订阅中...");
-        const hy2SubYamlContent = await fetchSubData(HY2_SUB_URL);
+        const hy2SubYamlContent = await fetchSubData(HY2_SUB_URL, hy2Proxies);
 
 
         if (!hy2SubYamlContent) {
-          console.log("未获取到订阅")
+          console.log("未获取到 hy2 订阅")
+          stopHy2Proxy();
           return;
         }
 
@@ -228,6 +400,9 @@ export async function reNewClashSub(ossClient: OSS | null) {
         //
       }
     }
+
+    // 清理 hy2 代理进程
+    stopHy2Proxy();
 
     console.log("clash 订阅任务完成");
   } else {
