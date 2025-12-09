@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "fs";
+import { execSync } from "child_process";
 import { cloneDeep } from "lodash";
 import yaml from "js-yaml";
 import OSS from "ali-oss";
@@ -25,6 +26,19 @@ interface ClashConfig {
 }
 
 async function fetchSubData(url: string) {
+  // 优先使用 curl，因为 GitHub Actions 中 fetch 可能被目标服务器 403
+  try {
+    // Windows CMD 中 & 是命令分隔符，需要用双引号包裹 URL
+    const result = execSync(
+      `curl -s -X GET "${url}" -H "User-Agent: clash-verge/v2.4.2" -H "Accept-Encoding: deflate, gzip" --compressed`,
+      { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+    );
+    return result;
+  } catch (curlError) {
+    console.warn('curl failed, falling back to fetch:', curlError);
+  }
+
+  // fallback 到 fetch
   const headers = {
     'User-Agent': 'clash-verge/v2.4.2',
     'Accept-Encoding': 'deflate, gzip'
