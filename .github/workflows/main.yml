@@ -22,7 +22,9 @@ jobs:
 
       - name: Install hysteria2 client
         run: |
-          curl -fsSL https://get.hy2.sh/ | bash
+          curl -fsSL https://get.hy2.sh/ | sudo bash
+          which hysteria || sudo ln -s /usr/local/bin/hysteria /usr/bin/hysteria
+          hysteria version
 
       - run: npm install tsx -g
       - run: npm install pnpm@7 -g
